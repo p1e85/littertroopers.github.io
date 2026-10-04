@@ -30,12 +30,13 @@ function animateCounter(el, target, isFloat, duration) {
 }
 
 async function loadStats() {
-    let targets = { pins: 0, miles: 0, routes: 0, troopers: 0 };
+    let targets = { pins: 0, items: 0, miles: 0, routes: 0, troopers: 0 };
     try {
         const snap = await getDoc(doc(db, "config", "appStats"));
         if (snap.exists()) {
             const d = snap.data();
             targets.pins     = d.totalPins     ?? 0;
+            targets.items    = d.totalItems    ?? 0;
             targets.miles    = parseFloat((d.totalMiles ?? 0).toFixed(1));
             targets.routes   = d.totalRoutes   ?? 0;
             targets.troopers = d.totalUsers    ?? 0;
@@ -44,6 +45,7 @@ async function loadStats() {
         console.warn("Stats fetch failed:", e);
     }
     animateCounter(document.getElementById('cnt-pins'),     targets.pins,     false, 1800);
+    animateCounter(document.getElementById('cnt-items'),    targets.items,    false, 1800);
     animateCounter(document.getElementById('cnt-miles'),    targets.miles,    true,  1800);
     animateCounter(document.getElementById('cnt-routes'),   targets.routes,   false, 1800);
     animateCounter(document.getElementById('cnt-troopers'), targets.troopers, false, 1800);
@@ -52,11 +54,19 @@ async function loadStats() {
     setTimeout(() => {
         setInterval(() => {
             const pEl = document.getElementById('cnt-pins');
+            const iEl = document.getElementById('cnt-items');
             const mEl = document.getElementById('cnt-miles');
+            
             if (pEl && pEl.textContent !== '—') {
                 if (Math.random() < 0.3) {
                     targets.pins++;
                     pEl.textContent = targets.pins.toLocaleString();
+                    
+                    // Increment items whenever pins go up (adds 1 to 3 items per pin tick)
+                    if (iEl && iEl.textContent !== '—') {
+                        targets.items += Math.floor(Math.random() * 3) + 1;
+                        iEl.textContent = targets.items.toLocaleString();
+                    }
                 }
             }
             if (mEl && mEl.textContent !== '—') {
@@ -165,6 +175,38 @@ if (betaSignupForm) {
             messageEl.classList.remove('hidden');
         } finally {
             submitBtn.textContent = "Join the Android Waitlist";
+            submitBtn.disabled = false;
+        }
+    });
+}
+
+// ── iOS BETA ────────────────────────────────────────────────
+const iosBetaSignupForm = document.getElementById('iosBetaSignupForm');
+if (iosBetaSignupForm) {
+    iosBetaSignupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const emailInput = document.getElementById('iosBetaEmailInput');
+        const messageEl = document.getElementById('iosBetaSignupMessage');
+        const submitBtn = document.getElementById('iosBetaSubmitBtn');
+        const email = emailInput.value.trim();
+
+        submitBtn.textContent = "Adding to list...";
+        submitBtn.disabled = true;
+        try {
+            await addDoc(collection(db, "betaWaitlist"), {
+                email, platform: "iOS", signupDate: new Date()
+            });
+            messageEl.textContent = "Success! You're on the list. Keep an eye on your inbox for the TestFlight invite.";
+            messageEl.style.color = '#28a745';
+            messageEl.classList.remove('hidden');
+            emailInput.value = '';
+        } catch (err) {
+            console.error(err);
+            messageEl.textContent = "Error saving email. Please try again.";
+            messageEl.style.color = '#dc3545';
+            messageEl.classList.remove('hidden');
+        } finally {
+            submitBtn.textContent = "Join the iOS Waitlist";
             submitBtn.disabled = false;
         }
     });
