@@ -21,7 +21,7 @@
     <script src='https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js'></script>
     <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
 
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗑️</text></svg>">
+    <link rel="icon" href="img/ltlogo1.png">
     <link href='https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css' rel='stylesheet' />
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" type="text/css">
     <link rel="stylesheet" href="css/maptest.css">
@@ -29,13 +29,16 @@
 <body>
 
 <div class="top-ui-container">
+        <!-- BRANDING HEADER -->
+        <div class="brand-header">
+            <img src="img/ltlogo1.png" alt="Litter Troopers Logo" class="brand-logo" style="height: 32px; width: auto; border-radius: 50%;">
+            <span class="brand-text">Litter Troopers</span>
+        </div>
+
         <div class="top-row">
-            <div style="font-weight: 900; font-size: 1.2rem; color: #4A7C59; display: flex; align-items: center; margin-right: auto; padding-left: 10px; text-shadow: 1px 1px 2px white;">🗑️ LITTER TROOPERS</div>
-            <div id="geocoder-container"></div>
             <button id="menuBtn" class="top-bar-button">☰ Menu</button>
         </div>
         <div class="bottom-row">
-             <button id="leaderboardBtn" class="top-bar-button">🏆 Leaderboard</button>
              <button id="communityBtn" class="community-button off">🌎 Community View: OFF</button>
         </div>
     </div>
@@ -70,6 +73,7 @@
                 <button id="trackBtn" class="modal-button btn-secondary">🛰️ Start Tracking</button>
                 <button id="dataBtn" class="modal-button btn-secondary">💾 Data Management</button>
                 <hr>
+                <button id="leaderboardBtn" class="modal-button btn-secondary">🏆 Leaderboard</button>
                 <button id="myProfileBtn" class="modal-button btn-secondary" disabled>👤 My Profile</button>
                 <button id="hubBtn" class="modal-button btn-secondary">🏙️ Community Hub</button>
                 <button id="infoBtn" class="modal-button btn-secondary">⚙️ Settings</button>
