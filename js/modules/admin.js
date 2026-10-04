@@ -16,8 +16,8 @@ import {
 } from './firebase.js';
 import { state } from './config.js';
 import { renderReportsTab } from './reports.js';
-import { getAdminChallenges, createNewChallenge, deleteChallenge } from './community.js';
-import { calculateRouteDistance, convertRouteFromFirestore } from './utils.js';
+import { getAdminChallenges, createNewChallenge, deleteChallenge,
+         fetchCommunityWindowDays, setCommunityWindowDays } from './community.js';import { calculateRouteDistance, convertRouteFromFirestore } from './utils.js';
 import { toast } from './toast.js';
 import { logAdminAction, fetchAuditLog, getActionLabel } from './audit.js';
 
@@ -495,6 +495,26 @@ async function renderStatsTab() {
         </div>
         ${stats.errors.length ? `<p style="color:#b00; margin-top:10px;">Some counts failed: ${stats.errors.join(', ')}</p>` : ''}
 
+        <div id="communityWindowAdmin" style="margin-top:18px; padding:14px 16px; background:#1A1A2E; border-radius:10px; color:#fff;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:2px;">
+                <span style="font-size:1.1em;">🕑</span>
+                <strong style="font-size:1em;">Community Pin Window</strong>
+            </div>
+            <div style="font-size:0.78em; opacity:0.7; margin-bottom:12px;">
+                Global — how many days back individual community pins load and show. Affects every user on all platforms. Older cleanups still count toward impact forever.
+            </div>
+            <div style="display:flex; align-items:baseline; gap:6px; margin-bottom:8px;">
+                <span id="cwWindowValue" style="font-size:1.8em; font-weight:700; color:#FFD54F;">—</span>
+                <span style="opacity:0.7; font-size:0.85em;">days</span>
+            </div>
+            <input type="range" id="cwWindowSlider" min="7" max="90" step="1" value="45" disabled
+                style="width:100%; accent-color:#FFD54F; cursor:pointer;">
+            <div style="display:flex; justify-content:space-between; font-size:0.72em; opacity:0.6; font-family:monospace;">
+                <span>7d</span><span>90d</span>
+            </div>
+            <div id="cwWindowStatus" style="font-size:0.78em; color:#FFD54F; margin-top:8px; min-height:1em;"></div>
+        </div>
+
         <h4 style="margin:20px 0 8px 0; color:#444; font-size:1em;">🏆 Top 10 Users by Routes Published</h4>
         <div id="adminTopUsersList" style="margin-bottom:14px;">
             <p style="color:#666; font-size:0.9em;">Computing…</p>
@@ -507,6 +527,44 @@ async function renderStatsTab() {
         <div id="adminBootstrapResult" style="display:none; margin-top:10px; padding:10px; background:#E8F5E9; border-radius:6px; font-size:0.85em; color:#333;"></div>
     `;
     document.getElementById('adminStatsRefreshBtn')?.addEventListener('click', renderStatsTab);
+
+    // Community Pin Window control — reads/writes config/communityView.windowDays
+    // (global, synced to Android + iOS). Loads async so the grid renders first.
+    (async () => {
+        const slider = document.getElementById('cwWindowSlider');
+        const valueEl = document.getElementById('cwWindowValue');
+        const statusEl = document.getElementById('cwWindowStatus');
+        if (!slider) return;
+        let committed = await fetchCommunityWindowDays();
+        slider.value = String(committed);
+        valueEl.textContent = String(committed);
+        slider.disabled = false;
+
+        // Live label while dragging (no writes yet).
+        slider.addEventListener('input', () => { valueEl.textContent = slider.value; });
+
+        // Commit on release — one write per adjustment. Reverts on failure.
+        slider.addEventListener('change', async () => {
+            const days = parseInt(slider.value, 10);
+            if (days === committed) return;
+            slider.disabled = true;
+            statusEl.textContent = 'Saving…';
+            try {
+                const saved = await setCommunityWindowDays(days);
+                committed = saved;
+                slider.value = String(saved);
+                valueEl.textContent = String(saved);
+                statusEl.textContent = `Window set to ${saved} days for all users.`;
+                logAdminAction('setCommunityWindow', { targetType: 'config', summary: `${saved} days` });
+            } catch (err) {
+                slider.value = String(committed);
+                valueEl.textContent = String(committed);
+                statusEl.textContent = 'Could not save: ' + (err.message || err);
+            } finally {
+                slider.disabled = false;
+            }
+        });
+    })();
 
     // Bootstrap Stats — calls the `bootstrapAppStats` Cloud Function (admin-only,
     // does a full rescan of publishedRoutes and publicProfiles, rewrites config/appStats).
