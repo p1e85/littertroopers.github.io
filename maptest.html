@@ -30,19 +30,19 @@
 </head>
 <body>
 
-    <div class="top-ui-container">
-        <!-- NEW BRANDING HEADER -->
-        <div class="brand-header">
-<img src="img/ltlogo1.png" alt="Litter Troopers Logo" class="brand-logo" style="height: 32px; width: auto; border-radius: 50%;">
-            <span class="brand-text">Litter Troopers</span>
-        </div>
-
-        <div class="top-row">
-            <div id="geocoder-container"></div>
+<div class="top-ui-container">
+        <!-- Top Row: Logo on the left, Menu on the right -->
+        <div class="top-row" style="align-items: flex-start;">
+            <div class="brand-header" style="margin-bottom: 0;">
+                <img src="img/ltlogo1.png" alt="Litter Troopers Logo" class="brand-logo">
+                <span class="brand-text">Litter Troopers</span>
+            </div>
+            
             <button id="menuBtn" class="top-bar-button">☰ Menu</button>
         </div>
-        <div class="bottom-row">
-             <button id="leaderboardBtn" class="top-bar-button">🏆 Leaderboard</button>
+        
+        <!-- Second Row: Community View aligned to the left under the logo -->
+        <div style="pointer-events: auto; display: flex; justify-content: flex-start;">
              <button id="communityBtn" class="community-button off">🌎 Community View: OFF</button>
         </div>
     </div>
@@ -75,6 +75,7 @@
             <button id="trackBtn" class="modal-button btn-secondary">🛰️ Start Tracking</button>
             <button id="dataBtn" class="modal-button btn-secondary">💾 Data Management</button>
             <hr>
+            <button id="leaderboardBtn" class="modal-button btn-secondary">🏆 Leaderboard</button>
             <button id="myProfileBtn" class="modal-button btn-secondary" disabled>👤 My Profile</button>
             <button id="hubBtn" class="modal-button btn-secondary">🏙️ Community Hub</button>
             <button id="infoBtn" class="modal-button btn-secondary">⚙️ Settings</button>
