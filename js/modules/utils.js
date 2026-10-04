@@ -1,3 +1,4 @@
+
 /**
  * A collection of reusable utility functions for data conversion and calculations.
  */
@@ -13,11 +14,26 @@ export function convertRouteForFirestore(coordsArray) {
 
 export function convertRouteFromFirestore(coordsData) {
     if (!coordsData || coordsData.length === 0) return [];
-    // Handles older data format for backward compatibility
-    if (Array.isArray(coordsData[0])) {
+    const first = coordsData[0];
+
+    // Legacy: already [[lng, lat], ...] — pass through
+    if (Array.isArray(first)) {
         return coordsData;
     }
-    return coordsData.map(coord => [coord.lng, coord.lat]);
+    // Web: [{lng, lat}, ...]
+    if (first && Number.isFinite(first.lng) && Number.isFinite(first.lat)) {
+        return coordsData.map(c => [c.lng, c.lat]);
+    }
+    // Android-style alternates: [{latitude, longitude}, ...] or {_latitude, _longitude}
+    if (first && Number.isFinite(first.longitude) && Number.isFinite(first.latitude)) {
+        return coordsData.map(c => [c.longitude, c.latitude]);
+    }
+    if (first && Number.isFinite(first._longitude) && Number.isFinite(first._latitude)) {
+        return coordsData.map(c => [c._longitude, c._latitude]);
+    }
+    // Unknown shape - return empty so renderers don't crash on bad geometry
+    console.warn('convertRouteFromFirestore: unknown coord shape', first);
+    return [];
 }
 
 export function convertPinsForFirestore(pinsArray) {
