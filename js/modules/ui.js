@@ -1,7 +1,7 @@
 import { db, collection, query, orderBy, limit, getDocs, doc, getDoc, deleteDoc } from './firebase.js'; 
 import { state, allTitles, allBadges, mapStyles } from './config.js';
 import { initializeMap, setMapStyle, centerOnRoute } from './map.js';
-import { initializeAuthListener, handleSignUp, handleLogIn, handleLogOut, handleAccountDeletion, handlePasswordReset } from './auth.js';
+import { initializeAuthListener, handleSignUp, handleLogIn, handleLogOut, handlePasswordReset } from './auth.js';
 import { findMe, toggleTracking, startTracking, handlePhoto, shareCleanupResults, resetFindMeState, handleQuickPinPhoto, saveQuickPin, cancelQuickPin } from './tracking.js';
 import { saveSession, loadSession, exportGeoJSON } from './data.js';
 import { 
@@ -199,8 +199,9 @@ export function attachEventListeners() {
     elements.passwordInput.addEventListener('input', validateSignUpForm);
     elements.usernameInput.addEventListener('input', validateSignUpForm);
     elements.ageCheckbox.addEventListener('change', validateSignUpForm);
-    elements.deleteAccountBtn.addEventListener('click', handleAccountDeletion);
-
+elements.deleteAccountBtn.addEventListener('click', () => {
+    alert("Account deletion is temporarily disabled during updates. Please contact support.");
+});
     // --- MAP & TRACKING ---
     elements.findMeBtn.addEventListener('click', findMe);
     elements.trackBtn.addEventListener('click', toggleTracking);
