@@ -39,8 +39,11 @@ export function initializeMap() {
         types: 'country,region,place,postcode,locality,neighborhood,address,poi' // Expand search to include POIs
 
     });
-    document.getElementById('geocoder-container').appendChild(geocoder.onAdd(state.map));
-
+const geoContainer = document.getElementById('geocoder-container');
+if (geoContainer) {
+    geoContainer.appendChild(geocoder.onAdd(state.map));
+}
+    
     const searchInput = document.querySelector('#geocoder-container .mapboxgl-ctrl-geocoder--input');
 
     // This code makes the input readonly initially, then removes that attribute
