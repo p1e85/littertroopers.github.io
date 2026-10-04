@@ -29,16 +29,18 @@
 <body>
 
 <div class="top-ui-container">
-        <!-- BRANDING HEADER -->
-        <div class="brand-header">
-            <img src="img/ltlogo1.png" alt="Litter Troopers Logo" class="brand-logo" style="height: 32px; width: auto; border-radius: 50%;">
-            <span class="brand-text">Litter Troopers</span>
-        </div>
-
-        <div class="top-row">
+        <!-- Top Row: Logo on the left, Menu on the right -->
+        <div class="top-row" style="align-items: flex-start;">
+            <div class="brand-header" style="margin-bottom: 0;">
+                <img src="img/ltlogo1.png" alt="Litter Troopers Logo" class="brand-logo">
+                <span class="brand-text">Litter Troopers</span>
+            </div>
+            
             <button id="menuBtn" class="top-bar-button">☰ Menu</button>
         </div>
-        <div class="bottom-row">
+        
+        <!-- Second Row: Community View aligned to the left under the logo -->
+        <div style="pointer-events: auto; display: flex; justify-content: flex-start;">
              <button id="communityBtn" class="community-button off">🌎 Community View: OFF</button>
         </div>
     </div>
