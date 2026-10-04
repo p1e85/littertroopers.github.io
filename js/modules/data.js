@@ -1,7 +1,7 @@
 import { db, collection, addDoc, getDocs, query, orderBy, doc, getDoc, deleteDoc } from './firebase.js';
 import { state } from './config.js';
 import { convertPinsForFirestore, convertPinsFromFirestore, convertRouteForFirestore, convertRouteFromFirestore } from './utils.js';
-import { createAndAddMarker, updateUserPinsSource } from './map.js';
+import { createAndAddMarker, updateUserPinsSource, centerOnRoute } from './map.js';
 import { storage, ref, uploadBytes, getDownloadURL } from './firebase.js';
 
 /**
@@ -148,9 +148,9 @@ function loadSpecificLocalSession(sessionIndex) {
         displaySessionData(convertedData);
         alert(`Session "${sessionData.sessionName}" loaded!`);
         document.getElementById('localSessionsModal').style.display = 'none';
- document.getElementById('centerOnRouteBtn').classList.remove('disabled');
-
- document.getElementById('dataModal').style.display = 'flex';
+        
+        // Automatically pan to the loaded route
+        centerOnRoute(); 
     }
 }
 
@@ -217,9 +217,9 @@ async function loadSpecificSession(sessionId) {
             });
             alert(`Session "${sessionData.sessionName}" loaded!`);
             document.getElementById('sessionsModal').style.display = 'none';
- document.getElementById('centerOnRouteBtn').classList.remove('disabled');
-
- document.getElementById('dataModal').style.display = 'flex';
+            
+            // Automatically pan to the loaded route
+            centerOnRoute(); 
         }
     } catch (error) {
         console.error("Error loading specific session:", error);
@@ -239,7 +239,6 @@ export function clearCurrentSession() {
     if (state.map && state.map.getSource('user-route')) {
         state.map.getSource('user-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
     }
-    document.getElementById('centerOnRouteBtn').classList.add('disabled');
 }
 
 /**
