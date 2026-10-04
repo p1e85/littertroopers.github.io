@@ -1,7 +1,7 @@
 import { db, collection, query, orderBy, limit, getDocs, doc, getDoc, deleteDoc } from './firebase.js'; 
 import { state, allTitles, allBadges, mapStyles } from './config.js';
 import { initializeMap, setMapStyle, centerOnRoute } from './map.js';
-import { initializeAuthListener, handleSignUp, handleLogIn, handleLogOut, handlePasswordReset } from './auth.js';
+import { initializeAuthListener, handleSignUp, handleLogin, handleLogOut, handlePasswordReset } from './auth.js';
 import { findMe, toggleTracking, startTracking, handlePhoto, shareCleanupResults, resetFindMeState, handleQuickPinPhoto, saveQuickPin, cancelQuickPin } from './tracking.js';
 import { saveSession, loadSession, exportGeoJSON } from './data.js';
 import { 
@@ -189,10 +189,10 @@ export function attachEventListeners() {
         }
     });
 
-    elements.authActionBtn.addEventListener('click', async (event) => { 
+elements.authActionBtn.addEventListener('click', async (event) => { 
         event.preventDefault();
         if (state.isSignUpMode) await handleSignUp();
-        else await handleLogIn();
+        else await handleLogin();
     });
 
     elements.emailInput.addEventListener('input', validateSignUpForm);
