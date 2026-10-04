@@ -1388,3 +1388,27 @@ function _leaderboardShowTab(tabKey) {
         fetchAndDisplayLeaderboard(tabKey);
     }
 }
+
+// TEMPORARY RECOUNT BUTTON FOR ADMINS
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+
+const forceRecountBtn = document.createElement('button');
+forceRecountBtn.innerText = "FORCE RECOUNT STATS";
+forceRecountBtn.style.cssText = "position:fixed; top:10px; left:10px; z-index:9999; background:red; color:white; padding:10px; font-weight:bold;";
+document.body.appendChild(forceRecountBtn);
+
+forceRecountBtn.addEventListener('click', async () => {
+    forceRecountBtn.innerText = "Recounting...";
+    try {
+        // You'll need to pass your initialized Firebase 'app' instance here
+        const functions = getFunctions(); 
+        const bootstrapAppStats = httpsCallable(functions, 'bootstrapAppStats');
+        const result = await bootstrapAppStats();
+        console.log("Recount complete! New stats:", result.data);
+        alert("Done! Refresh your landing page.");
+        forceRecountBtn.innerText = "DONE";
+    } catch (error) {
+        console.error("Recount failed:", error);
+        forceRecountBtn.innerText = "FAILED - Check Console";
+    }
+});
