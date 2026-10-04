@@ -29,18 +29,6 @@ export function initializeMap() {
         zoom: 10
     });
 
-    const geocoder = new MapboxGeocoder({
-        accessToken: mapboxgl.accessToken,
-        mapboxgl: mapboxgl,
-        marker: false,
-        placeholder: 'Search for a place',
-        autocomplete: false,
-        proximity: 'ip', // Prioritize results near the user's IP address
-        types: 'country,region,place,postcode,locality,neighborhood,address,poi' // Expand search to include POIs
-
-    });
-    document.getElementById('geocoder-container').appendChild(geocoder.onAdd(state.map));
-
     const searchInput = document.querySelector('#geocoder-container .mapboxgl-ctrl-geocoder--input');
 
     // This code makes the input readonly initially, then removes that attribute
