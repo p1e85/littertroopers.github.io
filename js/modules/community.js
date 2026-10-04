@@ -1,11 +1,12 @@
 import { 
-    db, serverTimestamp, Timestamp, collection, getDocs, query, orderBy, addDoc, doc, getDoc, where, setDoc, deleteDoc, updateDoc, onSnapshot, limit, storage, ref, uploadBytes, getDownloadURL, runTransaction, deleteField 
+    db, serverTimestamp, Timestamp, collection, getDocs, query, orderBy, addDoc, doc, getDoc, where, setDoc, deleteDoc, updateDoc, onSnapshot, limit, startAt, endAt, storage, ref, uploadBytes, getDownloadURL, runTransaction, deleteField 
 } from './firebase.js';
 import { state, allBadges, allTitles, profanityList } from './config.js';
 import { convertRouteForFirestore, convertPinsForFirestore, convertRouteFromFirestore, convertPinsFromFirestore, calculateRouteDistance } from './utils.js';
 import { clearCurrentSession } from './data.js';
 import { showPublicProfile } from './ui.js';
 import { checkXpDelta, getLevelBadgeHTML, renderProfileXpSection } from './xp.js';
+import { geohashQueryBounds, distanceBetween } from 'https://cdn.jsdelivr.net/npm/geofire-common@6.0.0/+esm';
 
 // utils.calculateRouteDistance returns METERS; convert to miles when needed.
 const METERS_TO_MILES = 0.000621371;
@@ -22,58 +23,100 @@ function getDistanceInMiles(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-// --- Community View (Updated with God Mode) ---
+// --- Community recency window (Phase 1, community-view redesign) ---
+// config/communityView.windowDays is the shared, admin-controlled window for
+// the individual community pin layer, synced across Android / iOS / web.
+// Clamp [7, 90], fallback 45 if missing/unreadable. Plain getDoc on public
+// config — guest-safe, no auth assumed.
+const COMMUNITY_WINDOW_DEFAULT = 45;
+const COMMUNITY_WINDOW_MIN = 7;
+const COMMUNITY_WINDOW_MAX = 90;
+
+export async function fetchCommunityWindowDays() {
+  try {
+    const snap = await getDoc(doc(db, "config", "communityView"));
+    if (!snap.exists()) return COMMUNITY_WINDOW_DEFAULT;
+    const n = Number(snap.data().windowDays);
+    if (!Number.isFinite(n)) return COMMUNITY_WINDOW_DEFAULT;
+    return Math.min(Math.max(Math.round(n), COMMUNITY_WINDOW_MIN), COMMUNITY_WINDOW_MAX);
+  } catch (e) {
+    console.warn("communityView config read failed; using default window:", e);
+    return COMMUNITY_WINDOW_DEFAULT;
+  }
+}
+
+// Writes the global community recency window. Affects every user on every
+// platform. merge so it self-seeds and never clobbers sibling config fields.
+// Clamped [7,90] on write too — defense in depth so no reader sees out-of-range.
+export async function setCommunityWindowDays(days) {
+  const clamped = Math.min(Math.max(Math.round(Number(days)), COMMUNITY_WINDOW_MIN), COMMUNITY_WINDOW_MAX);
+  await setDoc(doc(db, "config", "communityView"), { windowDays: clamped }, { merge: true });
+  return clamped;
+}
+
+// --- Community View (Phase 4: geohash viewport fetch + smooth refresh) ---
+//
+// Reads are bounded by the visible viewport via geohash ranges — no longer the
+// whole collection. Recency (windowDays) is enforced CLIENT-SIDE so every query
+// stays single-field on `geohash` (automatic index, no composite index needed).
+// Pins update via source.setData() so panning doesn't tear down/rebuild layers.
 export async function fetchAndDisplayCommunityRoutes() {
   try {
-    clearCommunityRoutes();
-    const q = query(collection(db, "publishedRoutes"), orderBy("timestamp", "desc"));
-    const querySnapshot = await getDocs(q);
+    if (!state.map || !state.map.isStyleLoaded()) return;
+
+    const windowDays = await fetchCommunityWindowDays();
+    const now = Date.now();
+
+    // Viewport → center + radius (metres) reaching the far corner, so the
+    // geohash circle covers the visible box.
+    const b = state.map.getBounds();
+    const center = [b.getCenter().lat, b.getCenter().lng]; // geofire wants [lat, lng]
+    const ne = b.getNorthEast();
+    const radiusM = Math.max(distanceBetween([center[0], center[1]], [ne.lat, ne.lng]) * 1000, 1);
+
+    // Up to ~9 geohash range pairs covering the circle — one query each.
+    const bounds = geohashQueryBounds(center, radiusM);
+    const snaps = await Promise.all(
+      bounds.map(([start, end]) =>
+        getDocs(query(
+          collection(db, "publishedRoutes"),
+          orderBy("geohash"),
+          startAt(start),
+          endAt(end)
+        )).catch(err => {
+          console.warn('Community geohash query failed for a bound:', err);
+          return { forEach: () => {} }; // shape-compatible empty result
+        })
+      )
+    );
+
+    // Merge + dedupe by doc id, then build pin features (recency + coord filtered).
+    const seen = new Set();
     const allPinFeatures = [];
+    const mapBounds = state.map.getBounds();
 
-    querySnapshot.forEach(doc => {
-      const routeData = doc.data();
-      const routeId = doc.id;
-      const mapboxCoords = convertRouteFromFirestore(routeData.route);
+    snaps.forEach(snap => {
+      snap.forEach(doc => {
+        if (seen.has(doc.id)) return;
+        seen.add(doc.id);
 
-      // Filter to only well-formed [lng, lat] pairs. A single bad coord pair
-      // (e.g. [undefined, undefined] from a malformed Android upload) makes
-      // Mapbox's GeoJSON worker throw "undefined is not iterable" on the whole
-      // source, hiding every route AND pin on the community map.
-      const validCoords = Array.isArray(mapboxCoords)
-        ? mapboxCoords.filter(c => Array.isArray(c) && c.length === 2 &&
-            Number.isFinite(c[0]) && Number.isFinite(c[1]))
-        : [];
+        const routeData = doc.data();
+        const routeId = doc.id;
 
-      if (validCoords.length !== (mapboxCoords ? mapboxCoords.length : 0)) {
-        console.warn('Filtered invalid coords from route', {
-          routeId, before: mapboxCoords ? mapboxCoords.length : 0, after: validCoords.length
-        });
-      }
+        // Route age (days) from the single publish timestamp — shared by all its
+        // pins. Missing → age 0 (full opacity). Recency drop happens here.
+        const _ts = routeData.timestamp;
+        const _tsMs = _ts && typeof _ts.toMillis === 'function'
+          ? _ts.toMillis()
+          : (_ts && _ts.seconds ? _ts.seconds * 1000 : (_ts instanceof Date ? _ts.getTime() : null));
+        const routeAgeDays = _tsMs != null ? (now - _tsMs) / 86400000 : 0;
+        if (routeAgeDays >= windowDays) return; // outside the window — skip
 
-      if (validCoords.length > 1) {
-        state.map.addSource(`community-route-${routeId}`, {
-          'type': 'geojson',
-          'data': { 'type': 'Feature', 'geometry': { 'type': 'LineString', 'coordinates': validCoords } }
-        });
-        state.map.addLayer({
-          'id': `community-route-${routeId}`,
-          'type': 'line',
-          'source': `community-route-${routeId}`,
-          'paint': { 'line-color': '#4A7C59', 'line-width': 4, 'line-opacity': 0.7 }
-        });
-        state.communityLayers.push({ id: `community-route-${routeId}`, type: 'layer' });
-      } else if (validCoords.length === 1) {
-        // Only one valid coord - can't draw a LineString, just skip the route line.
-        // Pins will still render below.
-        console.warn('Route has fewer than 2 valid coords, skipping line', { routeId });
-      }
-      
-      const mapboxPins = convertPinsFromFirestore(routeData.pins);
-      if (mapboxPins) {
+        const mapboxPins = convertPinsFromFirestore(routeData.pins);
+        if (!mapboxPins) return;
+
         mapboxPins.forEach(pin => {
-          // Validate coords. A single feature with coordinates: undefined poisons
-          // the whole community-pins GeoJSON source (Mapbox worker throws and no
-          // pins render at all). Skip bad ones; log so they can be cleaned later.
+          // Validate coords (a bad pair poisons the whole GeoJSON source).
           if (!pin || !pin.coords) {
             console.warn('Skipping community pin with missing coords', { routeId, pin });
             return;
@@ -86,6 +129,9 @@ export async function fetchAndDisplayCommunityRoutes() {
             console.warn('Skipping community pin with invalid coords', { routeId, pin });
             return;
           }
+          // Geohash false-positive trim: keep only pins actually in the viewport box.
+          if (!mapBounds.contains(lngLat)) return;
+
           allPinFeatures.push({
             'type': 'Feature',
             'properties': {
@@ -95,80 +141,97 @@ export async function fetchAndDisplayCommunityRoutes() {
               thumbnailURL: pin.thumbnailURL,
               username: routeData.username,
               userId: routeData.userId,
-              routeId: routeId // Saved for God Mode Deletion
+              routeId: routeId,       // Saved for God Mode Deletion
+              ageDays: routeAgeDays   // Phase 3 — per-pin age fade
             },
             'geometry': { 'type': 'Point', 'coordinates': lngLat }
           });
         });
-      }
-    });
-
-    if (!state.map.getSource('community-pins')) {
-      state.map.addSource('community-pins', {
-        type: 'geojson',
-        data: { 'type': 'FeatureCollection', 'features': allPinFeatures },
-        cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50
-      });
-    }
-
-    state.map.addLayer({
-      id: 'clusters',
-      type: 'circle',
-      source: 'community-pins',
-      filter: ['has', 'point_count'],
-      paint: { 'circle-color': '#4A7C59', 'circle-radius': ['step', ['get', 'point_count'], 20, 100, 30, 750, 40] }
-    });
-
-    state.map.addLayer({
-      id: 'cluster-count',
-      type: 'symbol',
-      source: 'community-pins',
-      filter: ['has', 'point_count'],
-      layout: { 'text-field': '{point_count_abbreviated}', 'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'], 'text-size': 12 },
-      paint: { 'text-color': '#ffffff' }
-    });
-
-    state.map.addLayer({
-      id: 'unclustered-point',
-      type: 'circle',
-      source: 'community-pins',
-      filter: ['!', ['has', 'point_count']],
-      paint: { 'circle-color': '#4A7C59', 'circle-radius': 8, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
-    });
-
-    state.map.on('click', 'clusters', (e) => {
-      const features = state.map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
-      const clusterId = features[0].properties.cluster_id;
-      state.map.getSource('community-pins').getClusterExpansionZoom(clusterId, (err, zoom) => {
-        if (err) return;
-        state.map.easeTo({ center: features[0].geometry.coordinates, zoom: zoom });
       });
     });
 
-
-// --- GOD MODE CLICK LISTENER ---
-    state.map.on('click', 'unclustered-point', async (e) => {
-      const properties = e.features[0].properties;
-
-      // Pass the entire pin data object to the profile viewer,
-      // which will trigger it to render the Pin layout at the top.
-      showPublicProfile(properties.userId, properties);
-    });
-
-    const clickableLayers = ['clusters', 'unclustered-point'];
-    clickableLayers.forEach(layer => {
-      state.map.on('mouseenter', layer, () => { state.map.getCanvas().style.cursor = 'pointer'; });
-      state.map.on('mouseleave', layer, () => { state.map.getCanvas().style.cursor = ''; });
-    });
+    // Ensure the source + layers exist (once), then just swap the data.
+    ensureCommunityLayers(windowDays);
+    const src = state.map.getSource('community-pins');
+    if (src) src.setData({ 'type': 'FeatureCollection', 'features': allPinFeatures });
 
   } catch (error) {
     console.error("Error fetching community routes:", error);
-    alert("Could not load community data.");
   }
 }
 
+// One-time setup of the community-pins source, cluster/point layers, and click
+// handlers. Idempotent: safe to call on every fetch — it no-ops once built.
+// windowDays drives the age-fade interpolate stops.
+function ensureCommunityLayers(windowDays) {
+  if (!state.map || state.map.getSource('community-pins')) return;
+
+  state.map.addSource('community-pins', {
+    type: 'geojson',
+    data: { 'type': 'FeatureCollection', 'features': [] },
+    cluster: true,
+    clusterMaxZoom: 14,
+    clusterRadius: 50
+  });
+
+  state.map.addLayer({
+    id: 'clusters',
+    type: 'circle',
+    source: 'community-pins',
+    filter: ['has', 'point_count'],
+    paint: { 'circle-color': '#4A7C59', 'circle-radius': ['step', ['get', 'point_count'], 20, 100, 30, 750, 40] }
+  });
+
+  state.map.addLayer({
+    id: 'cluster-count',
+    type: 'symbol',
+    source: 'community-pins',
+    filter: ['has', 'point_count'],
+    layout: { 'text-field': '{point_count_abbreviated}', 'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'], 'text-size': 12 },
+    paint: { 'text-color': '#ffffff' }
+  });
+
+  // Phase 3 — age fade. Full opacity ≤7d, linear ramp to 0 by day N.
+  // max(windowDays, 8) guards the N=7 case (interpolate stops must ascend).
+  const fadeExpr = [
+    'interpolate', ['linear'], ['get', 'ageDays'],
+    7, 1.0,
+    Math.max(windowDays, 8), 0.0
+  ];
+  state.map.addLayer({
+    id: 'unclustered-point',
+    type: 'circle',
+    source: 'community-pins',
+    filter: ['!', ['has', 'point_count']],
+    paint: {
+      'circle-color': '#4A7C59',
+      'circle-radius': 8,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#ffffff',
+      'circle-opacity': fadeExpr,
+      'circle-stroke-opacity': fadeExpr
+    }
+  });
+
+  state.map.on('click', 'clusters', (e) => {
+    const features = state.map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+    const clusterId = features[0].properties.cluster_id;
+    state.map.getSource('community-pins').getClusterExpansionZoom(clusterId, (err, zoom) => {
+      if (err) return;
+      state.map.easeTo({ center: features[0].geometry.coordinates, zoom: zoom });
+    });
+  });
+
+  state.map.on('click', 'unclustered-point', async (e) => {
+    const properties = e.features[0].properties;
+    showPublicProfile(properties.userId, properties);
+  });
+
+  ['clusters', 'unclustered-point'].forEach(layer => {
+    state.map.on('mouseenter', layer, () => { state.map.getCanvas().style.cursor = 'pointer'; });
+    state.map.on('mouseleave', layer, () => { state.map.getCanvas().style.cursor = ''; });
+  });
+}
 export function toggleCommunityView() {
     state.isCommunityViewOn = !state.isCommunityViewOn;
     const communityBtn = document.getElementById('communityBtn');
@@ -826,6 +889,34 @@ export async function fetchAndDisplayAllEvents() {
             card.style.borderLeft = borderStyle;
             card.style.opacity = cardOpacity;
 
+
+            // --- NEW RSVP LOGIC STARTS HERE ---
+            const attendees = data.attendees || [];
+            const waitlist = data.waitlist || [];
+            const maxAttendees = data.maxAttendees || 25;
+            const currentUid = state.currentUser ? state.currentUser.uid : null;
+            
+            const isAttending = currentUid && attendees.includes(currentUid);
+            const isWaiting = currentUid && waitlist.includes(currentUid);
+            const isFull = attendees.length >= maxAttendees;
+
+            let rsvpBtnHtml = '';
+            if (!isPast) {
+                if (isAttending) {
+                    rsvpBtnHtml = `<button class="modal-button rsvp-action-btn" data-meetup-id="${eventId}" style="margin-top:10px; font-size:0.8em; padding:5px 10px; background:transparent; border:1px solid #D9534F; color:#D9534F;">❌ Cancel RSVP</button>`;
+                } else if (isWaiting) {
+                    rsvpBtnHtml = `<button class="modal-button rsvp-action-btn" data-meetup-id="${eventId}" style="margin-top:10px; font-size:0.8em; padding:5px 10px; background:transparent; border:1px solid #D9534F; color:#D9534F;">Leave Waitlist</button>`;
+                } else if (isFull) {
+                    rsvpBtnHtml = `<button class="modal-button rsvp-action-btn" data-meetup-id="${eventId}" style="margin-top:10px; font-size:0.8em; padding:5px 10px; background:#FFF8E1; color:#B8860B; border:1px solid #B8860B;">Join Waitlist</button>`;
+                } else {
+                    rsvpBtnHtml = `<button class="modal-button rsvp-action-btn btn-primary" data-meetup-id="${eventId}" style="margin-top:10px; font-size:0.8em; padding:5px 10px;">👋 I'll be there</button>`;
+                }
+            }
+
+            const attendeeStatusHtml = `<div style="font-size:0.85em; color:#4A7C59; margin-top:8px; font-weight:600;">👥 ${attendees.length} / ${maxAttendees} going ${waitlist.length > 0 ? `<span style="color:#B8860B;">(${waitlist.length} waiting)</span>` : ''}</div>`;
+            // --- NEW RSVP LOGIC ENDS HERE ---
+
+
             card.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                     <div>
@@ -851,12 +942,24 @@ export async function fetchAndDisplayAllEvents() {
                     <small>Organizer: ${data.organizerName || 'Anonymous'}</small>
                 </div>
 
-                ${!isPast ? `
-                <button class="modal-button btn-secondary" style="margin-top:10px; font-size:0.8em; padding:5px 10px;" 
-                    onclick="alert('RSVP feature coming soon!')">
-                    👋 I'll be there
-                </button>` : ''}
+                ${attendeeStatusHtml}
+                ${rsvpBtnHtml}
             `;
+
+
+            // --- NEW RSVP CLICK LISTENER STARTS HERE ---
+            const rsvpBtn = card.querySelector('.rsvp-action-btn');
+            if (rsvpBtn) {
+                rsvpBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const btnMeetupId = e.target.getAttribute('data-meetup-id');
+                    e.target.disabled = true;
+                    e.target.textContent = "Processing...";
+                    await toggleRSVP(btnMeetupId);
+                });
+            }
+            // --- NEW RSVP CLICK LISTENER ENDS HERE ---
+
 
             // ATTACH DELETE LISTENER
             if (canDelete) {
@@ -2226,4 +2329,66 @@ function escapeIntelHtml(s) {
     return String(s)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+export async function toggleRSVP(meetupId) {
+    if (!state.currentUser) {
+        alert("Please log in to RSVP.");
+        return;
+    }
+
+    const uid = state.currentUser.uid;
+    const meetupRef = doc(db, "meetups", meetupId);
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            const meetupDoc = await transaction.get(meetupRef);
+            if (!meetupDoc.exists()) throw new Error("Meetup does not exist.");
+
+            const data = meetupDoc.data();
+            let attendees = data.attendees || [];
+            let waitlist = data.waitlist || [];
+            const maxAttendees = data.maxAttendees || 25;
+            let status = data.status || "upcoming";
+
+            const isAttending = attendees.includes(uid);
+            const isWaiting = waitlist.includes(uid);
+
+            if (isAttending || isWaiting) {
+                // --- UN-RSVP LOGIC ---
+                if (isAttending) {
+                    attendees = attendees.filter(id => id !== uid);
+                    // Promote the first waitlisted Trooper if a spot opens
+                    if (waitlist.length > 0) {
+                        const promotedUid = waitlist.shift();
+                        attendees.push(promotedUid);
+                    } else {
+                        status = "upcoming"; // Spot officially open
+                    }
+                } else if (isWaiting) {
+                    waitlist = waitlist.filter(id => id !== uid);
+                }
+            } else {
+                // --- RSVP LOGIC ---
+                if (attendees.length < maxAttendees) {
+                    attendees.push(uid);
+                    if (attendees.length >= maxAttendees) {
+                        status = "full";
+                    }
+                } else {
+                    waitlist.push(uid);
+                }
+            }
+
+            // Write the arrays back to Firestore
+            transaction.update(meetupRef, { attendees, waitlist, status });
+        });
+
+        // Silently refresh the events list so the button states update
+        fetchAndDisplayAllEvents();
+
+    } catch (error) {
+        console.error("RSVP Transaction failed: ", error);
+        alert("Could not update RSVP status. Please try again.");
+    }
 }
