@@ -487,11 +487,11 @@ button.close-btn:hover { color: var(--color-text-dark); }
 }
 
 .brand-logo {
-    height: 22px;
+    height: 32px;
     width: auto;
     object-fit: contain;
+    border-radius: 50%;
 }
-
 .brand-text {
     font-weight: 800;
     color: var(--color-primary-green);
