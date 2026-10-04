@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { 
     getFirestore, doc, getDoc, setDoc, updateDoc, collection, collectionGroup,
-    addDoc, getDocs, query, orderBy, where, deleteDoc, limit, onSnapshot, serverTimestamp, Timestamp, arrayUnion, arrayRemove, runTransaction, deleteField, getCountFromServer
+    addDoc, getDocs, query, orderBy, where, deleteDoc, limit, startAt, endAt, onSnapshot, serverTimestamp, Timestamp, arrayUnion, arrayRemove, runTransaction, deleteField, getCountFromServer
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { 
     getStorage, ref, uploadBytes, getDownloadURL 
@@ -57,6 +57,8 @@ export {
     where,
     deleteDoc,
     limit,
+    startAt,
+    endAt,
     onSnapshot,
     getCountFromServer,
     // Storage Functions
