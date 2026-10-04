@@ -55,6 +55,18 @@ export function initializeMap() {
     state.map.on('load', () => {
         initializeMapLayers();
         setupPoiClickListeners(); // From community.js
+        // Phase 4 — debounced camera-idle community refetch. moveend fires once
+        // when the camera settles (pan or zoom). Guarded on the toggle so it
+        // only runs while Community View is on. Smooth: fetch does setData(),
+        // no layer teardown.
+        let _communityRefetchTimer = null;
+        state.map.on('moveend', () => {
+            if (!state.isCommunityViewOn) return;
+            clearTimeout(_communityRefetchTimer);
+            _communityRefetchTimer = setTimeout(() => {
+                fetchAndDisplayCommunityRoutes();
+            }, 400);
+        });
 
         // Silent initial centering (spec §2.2): if location permission is already
         // granted, ease the camera to the user's area on open. Conditions:
