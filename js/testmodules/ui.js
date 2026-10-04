@@ -1,3 +1,4 @@
+// js/testmodules/ui.js
 
 import { db, collection, query, orderBy, limit, getDocs, doc, getDoc, deleteDoc } from './firebase.js'; 
 import { state, allTitles, allBadges, mapStyles } from './config.js';
@@ -12,18 +13,17 @@ import {
     fetchAndDisplayMyStats,
     handleMeetupSubmit, validateMeetupForm, toggleRouteLike, 
     openAchievementsModal, openEventBadgesModal, openCurrentChallenges,
-    // Logic Helpers
     getUserQuests, joinChallenge, getAdminChallenges, deleteChallenge, createNewChallenge, fetchAndDisplayAllEvents , initializeSquad, fetchLocalSquads, fetchSquadDetails
 } from './community.js';
 import { openAdminPanel, showAdminTab } from './admin.js';
 import { closeReportPinModal, submitPendingReport } from './reports.js';
 import { openMyProfileModal } from './profile.js';
 
+// IMPORT THE NEW MODAL MANAGER
+import { ModalManager } from './modal.js';
+
 // --- DOM Element Selection ---
 const elements = {
-    // Admin Elements
-    // NOTE: Old btnAdminPanel + adminChallengeModal + form fields removed.
-    // Challenge creation is now in the Challenges tab of the unified Admin Panel.
     myProfileBtn: document.getElementById('myProfileBtn'),
     
     // General Modals
@@ -48,8 +48,8 @@ const elements = {
     challengeMenuModal: document.getElementById('challengeMenuModal'),
     activeChallengesModal: document.getElementById('activeChallengesModal'),
     pastChallengesModal: document.getElementById('pastChallengesModal'),
-    achievementsModal: document.getElementById('achievementsModal'), // The List Modal
-    achievementModal: document.getElementById('achievementModal'), // The Popup Modal
+    achievementsModal: document.getElementById('achievementsModal'), 
+    achievementModal: document.getElementById('achievementModal'), 
 
     // Buttons
     agreeBtn: document.getElementById('agreeBtn'),
@@ -111,14 +111,14 @@ const elements = {
     
     // Specific Navigation Buttons
     communityChallengeBtn: document.getElementById('communityChallengeBtn'), 
-    btnAchievements: document.getElementById('btnAchievements'), // Main Menu Button
-    btnViewEventBadges: document.getElementById('btnViewEventBadges'), // Challenge Hub Button
-    achievementListBackBtn: document.getElementById('achievementListBackBtn'), // Dynamic Back Button
+    btnAchievements: document.getElementById('btnAchievements'), 
+    btnViewEventBadges: document.getElementById('btnViewEventBadges'), 
+    achievementListBackBtn: document.getElementById('achievementListBackBtn'), 
     
     btnCurrentChallenges: document.getElementById('btnCurrentChallenges'),
     btnPastChallenges: document.getElementById('btnPastChallenges'),
-    btnBackToMenu: document.querySelector('#pastChallengesModal .ok-btn'), // History Back
-    btnBackFromCurrent: document.getElementById('btnBackFromCurrent'), // Current Back
+    btnBackToMenu: document.querySelector('#pastChallengesModal .ok-btn'), 
+    btnBackFromCurrent: document.getElementById('btnBackFromCurrent'), 
     btnchallengeMenuBack: document.getElementById('btnchallengeMenuBack'),
     
     // Tabs
@@ -136,23 +136,26 @@ const elements = {
  * Main initializer for the entire UI.
  */
 export function initializeUI() {
+    // START THE MODAL MANAGER
+    ModalManager.initGlobalListeners();
+
     initializeMap();
     state.map.on('dragstart', (e) => { if (e.originalEvent) resetFindMeState(); });
     state.map.on('zoomstart', (e) => { if (e.originalEvent) resetFindMeState(); });
     initializeAuthListener();
     attachEventListeners();
+    
     if (sessionStorage.getItem('termsAccepted')) {
-        elements.termsModal.style.display = 'none';
+        ModalManager.close('termsModal');
         document.getElementById('userStatus').style.display = 'flex';
     } else {
-        elements.termsModal.style.display = 'flex';
+        ModalManager.open('termsModal');
     }
 
     const dateElement = document.getElementById('dynamicDateDay');
     if (dateElement) {
         dateElement.textContent = new Date().getDate(); 
     }
-    
 }
 
 export function attachEventListeners() {
@@ -173,14 +176,14 @@ export function attachEventListeners() {
     elements.termsCheckbox.addEventListener('change', () => elements.agreeBtn.disabled = !elements.termsCheckbox.checked);
     
     elements.agreeBtn.addEventListener('click', () => {
-        elements.termsModal.style.display = 'none';
+        ModalManager.close('termsModal');
         sessionStorage.setItem('termsAccepted', 'true');
         document.getElementById('userStatus').style.display = 'flex';
-        if (!state.currentUser) elements.authModal.style.display = 'flex';
+        if (!state.currentUser) ModalManager.open('authModal');
     });
 
-    elements.loginSignupBtn.addEventListener('click', () => elements.authModal.style.display = 'flex');
-    elements.skipBtn.addEventListener('click', () => elements.authModal.style.display = 'none');
+    elements.loginSignupBtn.addEventListener('click', () => ModalManager.open('authModal'));
+    elements.skipBtn.addEventListener('click', () => ModalManager.close('authModal'));
     
     elements.authModal.addEventListener('click', (e) => {
         if (e.target.id === 'switchAuthModeLink') {
@@ -206,9 +209,6 @@ export function attachEventListeners() {
     elements.findMeBtn.addEventListener('click', findMe);
     elements.trackBtn.addEventListener('click', toggleTracking);
     
-    // pictureBtn routes to different behavior based on tracking state:
-    //  - During tracking: triggers the regular route-photo cameraInput
-    //  - When NOT tracking (but logged in): triggers the quick pin camera
     elements.pictureBtn.addEventListener('click', () => {
         if (state.isTracking) {
             elements.cameraInput.click();
@@ -223,16 +223,8 @@ export function attachEventListeners() {
     if (quickPinInput) quickPinInput.addEventListener('change', handleQuickPinPhoto);
     document.getElementById('quickPinSaveBtn')?.addEventListener('click', saveQuickPin);
     document.getElementById('quickPinCancelBtn')?.addEventListener('click', cancelQuickPin);
-    // Also close on overlay click (matches all other modals)
-    document.getElementById('quickPinModal')?.addEventListener('click', (e) => {
-        if (e.target.id === 'quickPinModal') cancelQuickPin();
-    });
 
     // --- SETTINGS: MAP STYLE SELECTOR ---
-    // The old top-bar 🎨 Change Style button was removed. Style selection now
-    // lives in Settings (infoModal) as full-width option cards, matching
-    // Android/iOS. Event delegation on the container; cards are re-rendered
-    // on every selection so the green highlight + ✓ move immediately.
     document.getElementById('mapStyleOptions')?.addEventListener('click', (e) => {
         const btn = e.target.closest('.map-style-option');
         if (!btn) return;
@@ -241,25 +233,24 @@ export function attachEventListeners() {
     });
     
     // --- MAIN MENU NAVIGATION ---
-    elements.menuBtn.addEventListener('click', () => elements.menuModal.style.display = 'flex');
+    elements.menuBtn.addEventListener('click', () => ModalManager.open('menuModal'));
     
     // 2. Main Menu: Achievements
     if (elements.btnAchievements) {
         elements.btnAchievements.addEventListener('click', () => {
-            elements.menuModal.style.display = 'none';
-            elements.achievementsModal.style.display = 'flex';
+            ModalManager.close('menuModal');
+            ModalManager.open('achievementsModal');
             
-            openAchievementsModal(); // Calls the code above
+            openAchievementsModal(); 
             
-            // Back Button logic...
             if (elements.achievementListBackBtn) {
                 const newBackBtn = elements.achievementListBackBtn.cloneNode(true);
                 elements.achievementListBackBtn.parentNode.replaceChild(newBackBtn, elements.achievementListBackBtn);
                 elements.achievementListBackBtn = newBackBtn; 
 
                 newBackBtn.addEventListener('click', () => {
-                    elements.achievementsModal.style.display = 'none';
-                    elements.menuModal.style.display = 'flex';
+                    ModalManager.close('achievementsModal');
+                    ModalManager.open('menuModal');
                 });
             }
         });
@@ -268,75 +259,68 @@ export function attachEventListeners() {
     // 3. Community Map View
     elements.communityBtn.addEventListener('click', toggleCommunityView);
     
-    // 4. Info / Settings — renders the map-style cards and account section
-    // fresh on every open so both always reflect current state.
-    // NOTE: the old #viewTermsLink footer was removed from the Settings modal;
-    // Terms/Privacy are now plain <a> link buttons in the HTML (no JS needed).
+    // 4. Info / Settings
     elements.infoBtn.addEventListener('click', () => {
         renderMapStyleOptions();
         renderSettingsAccountSection();
-        elements.infoModal.style.display = 'flex';
+        ModalManager.open('infoModal');
     });
 
-    // Settings > Account buttons (rendered dynamically, so delegate)
     document.getElementById('settingsAccountSection')?.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
         if (!btn) return;
         if (btn.id === 'settingsEditProfileBtn') {
-            elements.infoModal.style.display = 'none';
+            ModalManager.close('infoModal');
             loadProfileForEditing();
-            elements.profileModal.style.display = 'flex';
+            ModalManager.open('profileModal');
         } else if (btn.id === 'settingsSignOutBtn') {
-            elements.infoModal.style.display = 'none';
+            ModalManager.close('infoModal');
             handleLogOut();
         } else if (btn.id === 'settingsLoginBtn') {
-            elements.infoModal.style.display = 'none';
-            elements.authModal.style.display = 'flex';
+            ModalManager.close('infoModal');
+            ModalManager.open('authModal');
         }
     });
 
     // --- DATA & SAVING ---
     elements.safetyModalOkBtn.addEventListener('click', () => {
-        elements.safetyModal.style.display = 'none';
+        ModalManager.close('safetyModal');
         startTracking();
     });
 
     elements.summaryOkBtn.addEventListener('click', () => { 
-        elements.summaryModal.style.display = 'none';
+        ModalManager.close('summaryModal');
         document.getElementById('cleanupPhotoPreviewContainer').style.display = 'none';
         document.getElementById('cleanupPhotoPreview').src = '#';
     });
 
     elements.dataBtn.addEventListener('click', () => {
-        elements.menuModal.style.display = 'none';
-        elements.dataModal.style.display = 'flex';
+        ModalManager.close('menuModal');
+        ModalManager.open('dataModal');
     });
 
     elements.saveBtn.addEventListener('click', saveSession);
     
     elements.loadBtn.addEventListener('click', () => {
-        elements.dataModal.style.display = 'none';
+        ModalManager.close('dataModal');
         loadSession();
     });
     
     elements.exportBtn.addEventListener('click', exportGeoJSON);
-
     elements.publishBtn.addEventListener('click', publishRoute);
     
     elements.managePublicationsBtn.addEventListener('click', () => {
         if (!state.currentUser) { alert("You must be logged in to manage your publications."); return; }
-        elements.dataModal.style.display = 'none';
+        ModalManager.close('dataModal');
         populatePublishedRoutesList();
-        elements.publishedRoutesModal.style.display = 'flex';
+        ModalManager.open('publishedRoutesModal');
     });
 
     // --- PROFILE ---
-    // myProfileBtn opens the new My Profile modal.
-    // The Edit Profile button now lives INSIDE that modal (profile.js).
     if (elements.myProfileBtn) {
         elements.myProfileBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // prevent overlay-close handler
-            elements.menuModal.style.display = 'none';
+            e.stopPropagation(); 
+            ModalManager.close('menuModal');
             openMyProfileModal();
         });
     }
@@ -344,7 +328,7 @@ export function attachEventListeners() {
 
     // --- LEADERBOARD ---
     elements.leaderboardBtn.addEventListener('click', () => {
-        elements.leaderboardModal.style.display = 'flex';
+        ModalManager.open('leaderboardModal');
         _leaderboardShowTab('totalPins');
     });
 
@@ -356,14 +340,13 @@ export function attachEventListeners() {
         });
     });
 
-    // Clicking a user row on any leaderboard → open their public profile
     document.getElementById('leaderboardModal')?.addEventListener('click', (e) => {
         const link = e.target.closest('.lb-profile-link');
         if (link) {
             e.preventDefault();
             const uid = link.dataset.uid;
             if (uid) {
-                elements.leaderboardModal.style.display = 'none';
+                ModalManager.close('leaderboardModal');
                 showPublicProfile(uid);
             }
         }
@@ -407,10 +390,8 @@ export function attachEventListeners() {
 
     // --- HUB NAVIGATION (Feed/Events) ---
     elements.hubBtn.addEventListener('click', async () => {
-        elements.menuModal.style.display = 'none';
-        elements.hubModal.style.display = 'flex';
-        // Refresh pending squad invites strip whenever the hub opens. Lazy
-        // import avoids loading squads.js until needed.
+        ModalManager.close('menuModal');
+        ModalManager.open('hubModal');
         try {
             const squadsMod = await import('./squads.js');
             await renderHubInvitesStrip(squadsMod);
@@ -418,98 +399,83 @@ export function attachEventListeners() {
             console.warn('Could not load pending invites:', err);
         }
     });
+    
     if (elements.hubChallengesBtn) {
         elements.hubChallengesBtn.addEventListener('click', () => {
-            elements.hubModal.style.display = 'none'; 
-            elements.challengeMenuModal.style.display = 'flex'; 
+            ModalManager.close('hubModal');
+            ModalManager.open('challengeMenuModal');
         });
     }
     elements.hubEventsBtn.addEventListener('click', () => {
-        elements.hubModal.style.display = 'none';
-        elements.eventsModal.style.display = 'flex';
+        ModalManager.close('hubModal');
+        ModalManager.open('eventsModal');
         fetchAndDisplayAllEvents();
     });
     elements.hubFeedBtn.addEventListener('click', () => {
-        elements.hubModal.style.display = 'none';
-        elements.feedModal.style.display = 'flex';
+        ModalManager.close('hubModal');
+        ModalManager.open('feedModal');
         loadActivityFeed();
     });
 
     // --- CHALLENGE MENU NAVIGATION ---
-
-    // 1. EVENT BADGES (Challenge Menu -> Event Rewards)
     if (elements.btnViewEventBadges) {
         elements.btnViewEventBadges.addEventListener('click', () => {
-            elements.challengeMenuModal.style.display = 'none'; // Close Hub
-            elements.achievementsModal.style.display = 'flex';  // Open List
-            
-            // Call the Specific Function for Events
+            ModalManager.close('challengeMenuModal');
+            ModalManager.open('achievementsModal');
             openEventBadgesModal(); 
             
-            // DYNAMIC BACK BUTTON: Returns to Challenge Hub
             if (elements.achievementListBackBtn) {
-                // Clone node to strip old listeners
                 const newBackBtn = elements.achievementListBackBtn.cloneNode(true);
                 elements.achievementListBackBtn.parentNode.replaceChild(newBackBtn, elements.achievementListBackBtn);
                 elements.achievementListBackBtn = newBackBtn; 
 
                 newBackBtn.addEventListener('click', () => {
-                    elements.achievementsModal.style.display = 'none';
-                    elements.challengeMenuModal.style.display = 'flex'; // <--- Go back to Challenge Hub
+                    ModalManager.close('achievementsModal');
+                    ModalManager.open('challengeMenuModal');
                 });
             }
         });
     }
 
-    // 2. Current Challenges
     if (elements.btnCurrentChallenges) {
         elements.btnCurrentChallenges.addEventListener('click', () => {
-            elements.challengeMenuModal.style.display = 'none';
-            elements.activeChallengesModal.style.display = 'flex';
-            
-            // Call the correct function from community.js!
+            ModalManager.close('challengeMenuModal');
+            ModalManager.open('activeChallengesModal');
             openCurrentChallenges(); 
         });
     }
     
-    // Back from Current -> Hub
     if (elements.btnBackFromCurrent) {
         elements.btnBackFromCurrent.addEventListener('click', (e) => {
             e.stopPropagation();
-            elements.activeChallengesModal.style.display = 'none';
-            elements.challengeMenuModal.style.display = 'flex';
+            ModalManager.close('activeChallengesModal');
+            ModalManager.open('challengeMenuModal');
         });
     }
 
-    // 3. Challenge Menu BACK Button (The Fix!)
     if (elements.btnchallengeMenuBack) {
         elements.btnchallengeMenuBack.addEventListener('click', (e) => {
             e.stopPropagation();
-            // Close the Challenge Menu
-            elements.challengeMenuModal.style.display = 'none';
-            // Return to the Community Hub
-            elements.hubModal.style.display = 'flex';
+            ModalManager.close('challengeMenuModal');
+            ModalManager.open('hubModal');
         });
     }
 
-    // 4. Past Challenges
     elements.btnPastChallenges.addEventListener('click', () => {
-        elements.challengeMenuModal.style.display = 'none';
-        elements.pastChallengesModal.style.display = 'flex';
+        ModalManager.close('challengeMenuModal');
+        ModalManager.open('pastChallengesModal');
         elements.tabCompleted.classList.add('active');
         elements.tabUncompleted.classList.remove('active');
         loadPastChallenges('completed'); 
     });
 
-    // Back from History -> Hub
     if (elements.btnBackToMenu) {
         elements.btnBackToMenu.addEventListener('click', () => {
-            elements.pastChallengesModal.style.display = 'none';
-            elements.challengeMenuModal.style.display = 'flex';
+            ModalManager.close('pastChallengesModal');
+            ModalManager.open('challengeMenuModal');
         });
     }
 
-    // 5. History Tabs
     elements.tabCompleted.addEventListener('click', () => {
         elements.tabCompleted.classList.add('active');
         elements.tabUncompleted.classList.remove('active');
@@ -522,42 +488,20 @@ export function attachEventListeners() {
         loadPastChallenges('uncompleted');
     });
 
-    // 6. Admin Panel
-    // NOTE: The old "Admin: Create Challenge" button (btnAdminPanel) and its modal
-    // (adminChallengeModal) were removed. Challenge creation now lives in the
-    // Challenges tab of the unified Admin Panel (see admin.js renderChallengesTab).
-
-
     // --- NEW ADMIN PANEL (Phase 1) ---
-    // Opens the multi-tab admin panel (stats / pending events / pending squads).
-    // The button is added to maptest.html in the menuModal and only displayed
-    // to admins via checkAdminPermissions().
     const btnAdminPanelFull = document.getElementById('btnAdminPanelFull');
     if (btnAdminPanelFull) {
         btnAdminPanelFull.addEventListener('click', async (e) => {
-            // Stop the click bubbling to the window-level handler that closes any
-            // .modal-overlay clicked. Without this, the click opens the admin
-            // panel and then immediately closes it on the same bubbling click.
             e.stopPropagation();
-            elements.menuModal.style.display = 'none';
+            ModalManager.close('menuModal');
             await openAdminPanel();
         });
     }
-    // Tab switching inside the admin panel
     document.querySelectorAll('.admin-tab-btn').forEach(btn => {
         btn.addEventListener('click', () => showAdminTab(btn.dataset.tab));
     });
-    // Close button for admin panel
-    const adminPanelCloseBtn = document.querySelector('#adminPanelModal .close-btn');
-    if (adminPanelCloseBtn) {
-        adminPanelCloseBtn.addEventListener('click', () => {
-            document.getElementById('adminPanelModal').style.display = 'none';
-        });
-    }
-
-    // --- REPORT PIN MODAL (Phase 2) ---
-    // The modal itself is opened from map.js via openReportPinModal() when the
-    // user clicks 🚩 on a community pin. Here we just wire the close/submit buttons.
+    
+    // Phase 2: Report Pin Modals
     const reportCloseBtn = document.getElementById('reportPinCloseBtn');
     if (reportCloseBtn) reportCloseBtn.addEventListener('click', closeReportPinModal);
     const reportCancelBtn = document.getElementById('reportCancelBtn');
@@ -565,28 +509,25 @@ export function attachEventListeners() {
     const reportSubmitBtn = document.getElementById('reportSubmitBtn');
     if (reportSubmitBtn) reportSubmitBtn.addEventListener('click', submitPendingReport);
 
-    // --- LOCAL EVENTS BACK BUTTON ---
     const btnEventsBack = document.getElementById('btnEventsBack');
     if (btnEventsBack) {
         btnEventsBack.addEventListener('click', () => {
-            // Close the Events Modal
-            elements.eventsModal.style.display = 'none';
-            // Return to the Community Hub
-            elements.hubModal.style.display = 'flex';
+            ModalManager.close('eventsModal');
+            ModalManager.open('hubModal');
         });
     }
 
     if (elements.btnPastChallengesBack) {
         elements.btnPastChallengesBack.addEventListener('click', () => {
-            elements.pastChallengesModal.style.display = 'none';
-            elements.challengeMenuModal.style.display = 'flex';
+            ModalManager.close('pastChallengesModal');
+            ModalManager.open('challengeMenuModal');
         });
     }
     
     // --- LOG TRASH (NEW BUTTONS) ---
     if (elements.logTrashBtn) {
         elements.logTrashBtn.addEventListener('click', () => {
-            elements.logTrashModal.style.display = 'flex';
+            ModalManager.open('logTrashModal');
             elements.trashCountInput.value = ''; 
             elements.trashCountInput.focus();
         });
@@ -596,15 +537,8 @@ export function attachEventListeners() {
         elements.confirmTrashBtn.addEventListener('click', () => {
             const count = parseInt(elements.trashCountInput.value);
             if (count > 0) {
-                // We add these to the 'state' temporarily, or we could just alert for now.
-                // Since we are using "1 Pin = 1 Item" for the main logic, 
-                // this button is likely for "Bulk Logging" if you decided to keep it.
-                // If you opted for "1 Pin = 1 Item" only, you might not need this listener logic connected to DB yet.
                 alert(`Logged ${count} items! (This will be saved when you stop tracking).`);
-                
-                // Optional: Push dummy pins to count as items?
-                // For now, just close modal.
-                elements.logTrashModal.style.display = 'none';
+                ModalManager.close('logTrashModal');
             } else {
                 alert("Please enter a valid number.");
             }
@@ -619,69 +553,36 @@ export function attachEventListeners() {
         });
     }
 
-// --- SQUADS NAVIGATION ---
-const hubSquadsBtn = document.getElementById('hubSquadsBtn');
-if (hubSquadsBtn) {
-    hubSquadsBtn.addEventListener('click', () => {
-        openModal('squadsModal');
-        // Ensure it always opens to the list, not a half-filled form
-        if (typeof switchSquadView === 'function') {
-            switchSquadView('registry');
-        }
-        // Load the data
-        if (typeof fetchLocalSquads === 'function') {
-            fetchLocalSquads(); 
-        }
-    });
-}
+    // --- SQUADS NAVIGATION ---
+    const hubSquadsBtn = document.getElementById('hubSquadsBtn');
+    if (hubSquadsBtn) {
+        hubSquadsBtn.addEventListener('click', () => {
+            ModalManager.open('squadsModal');
+            if (typeof switchSquadView === 'function') {
+                switchSquadView('registry');
+            }
+            if (typeof fetchLocalSquads === 'function') {
+                fetchLocalSquads(); 
+            }
+        });
+    }
 
-const btnFinalizeSquad = document.getElementById('btnFinalizeSquad');
-if (btnFinalizeSquad) {
-    btnFinalizeSquad.addEventListener('click', () => {
-         // Safety check
-         if (typeof initializeSquad === 'function') {
-            initializeSquad();
-        } else {
-            console.error("initializeSquad function missing");
-        }
-    });
-}
-    
-//    document.getElementById('hubSquadsBtn').addEventListener('click', () => {
-//    openModal('squadsModal');
-//   fetchLocalSquads(); // Refresh list every time it opens
-//});
+    const btnFinalizeSquad = document.getElementById('btnFinalizeSquad');
+    if (btnFinalizeSquad) {
+        btnFinalizeSquad.addEventListener('click', () => {
+             if (typeof initializeSquad === 'function') {
+                initializeSquad();
+            } else {
+                console.error("initializeSquad function missing");
+            }
+        });
+    }
 
-document.getElementById('btnFinalizeSquad').addEventListener('click', initializeSquad);
-    
-    // Generic Close Listeners
-    addAllModalCloseListeners();
-
+    document.getElementById('btnFinalizeSquad')?.addEventListener('click', initializeSquad);
     
 } //********************end event listern**************
 
-function addAllModalCloseListeners() {
-    const allModals = Object.values(elements).filter(el => el && el.classList && el.classList.contains('modal-overlay'));
-    allModals.forEach(modal => {
-        const closeBtn = modal.querySelector('.close-btn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => modal.style.display = 'none');
-        }
-        // NOTE: We don't auto-close on generic .ok-btn anymore because we have specific logic for them now
-    });
-    window.addEventListener('click', (event) => {
-        if (event.target.classList.contains('modal-overlay')) {
-            event.target.style.display = 'none';
-        }
-    });
-}
-
 // --- SETTINGS: MAP STYLE CARDS -----------------------------------------------
-// Renders the full-width style option cards inside #mapStyleOptions (Settings
-// modal). The active style gets the green card + ✓, everything else is a gray
-// card — matching the Android/iOS Settings screen. Data source is the
-// mapStyles array in config.js, so adding a style there automatically shows
-// it here.
 function renderMapStyleOptions() {
     const container = document.getElementById('mapStyleOptions');
     if (!container) return;
@@ -696,10 +597,6 @@ function renderMapStyleOptions() {
 }
 
 // --- SETTINGS: ACCOUNT SECTION ------------------------------------------------
-// Renders the user card (avatar / username / email) + Edit Profile + Sign Out
-// inside #settingsAccountSection, matching the Android Settings screen. Guests
-// get a Log In / Sign Up button instead. Renders instantly with the email,
-// then swaps in the username after one publicProfiles read.
 function buildSettingsAccountHTML(initial, username, email) {
     return `
         <div class="settings-account-card">
@@ -730,13 +627,10 @@ async function renderSettingsAccountSection() {
     try {
         const snap = await getDoc(doc(db, 'publicProfiles', state.currentUser.uid));
         const username = (snap.exists() && snap.data().username) ? snap.data().username : 'Trooper';
-        // User may have closed Settings or logged out while the read was in
-        // flight — only overwrite if we're still showing a logged-in card.
         if (state.currentUser && document.getElementById('settingsEditProfileBtn')) {
             container.innerHTML = buildSettingsAccountHTML(username.charAt(0).toUpperCase(), username, email);
         }
     } catch (err) {
-        // Non-critical: card already shows the email; leave the fallback.
         console.warn('Settings account card: username fetch failed', err);
     }
 }
@@ -753,21 +647,17 @@ export function updateLoggedInStatusUI(isLoggedIn, username = '') {
         if (userEmailSpan) userEmailSpan.textContent = `Logged in as: ${username}`;
         if (loggedInContent) loggedInContent.style.display = 'flex';
         if (guestContent) guestContent.style.display = 'none';
-        if (elements.authModal) elements.authModal.style.display = 'none';
+        if (elements.authModal) ModalManager.close('authModal');
         if (elements.publishBtn) elements.publishBtn.style.display = 'block';
         if (elements.managePublicationsBtn) elements.managePublicationsBtn.style.display = 'block';
-        // Enable My Profile button (disabled when logged out)
         if (elements.myProfileBtn) elements.myProfileBtn.disabled = false;
-        // Enable Quick Pin — pictureBtn is usable whenever logged in (not just during tracking)
         if (elements.pictureBtn) elements.pictureBtn.disabled = false;
     } else {
         if (loggedInContent) loggedInContent.style.display = 'none';
         if (guestContent) guestContent.style.display = 'block';
         if (elements.publishBtn) elements.publishBtn.style.display = 'none';
         if (elements.managePublicationsBtn) elements.managePublicationsBtn.style.display = 'none';
-        // Disable My Profile when logged out
         if (elements.myProfileBtn) elements.myProfileBtn.disabled = true;
-        // Disable when logged out — Quick Pin requires an account
         if (elements.pictureBtn && !state.isTracking) elements.pictureBtn.disabled = true;
     }
 }
@@ -776,7 +666,7 @@ export function updateAuthModalUI() {
     const authForm = document.getElementById('authForm');
     const authTitle = document.getElementById('authTitle');
     const authSubtitle = document.getElementById('authSubtitle');
-    const forgotLink = document.getElementById('forgotPasswordLink'); // Get the link
+    const forgotLink = document.getElementById('forgotPasswordLink'); 
 
     document.getElementById('authError').textContent = '';
 
@@ -786,8 +676,6 @@ export function updateAuthModalUI() {
         elements.authActionBtn.textContent = 'Sign Up';
         authForm.classList.add('signup-mode');
         authForm.classList.remove('login-mode');
-        
-        // Hide on Sign Up
         if (forgotLink) forgotLink.style.display = 'none'; 
     } else {
         authTitle.textContent = 'Log In to Litter Troopers';
@@ -795,8 +683,6 @@ export function updateAuthModalUI() {
         elements.authActionBtn.textContent = 'Log In';
         authForm.classList.add('login-mode');
         authForm.classList.remove('signup-mode');
-        
-        // Show on Login
         if (forgotLink) forgotLink.style.display = 'inline-block'; 
     }
     validateSignUpForm();
@@ -817,13 +703,12 @@ function validateSignUpForm() {
 
 // --- ACTIVITY FEED (User View + Admin Controls) ---
 async function loadActivityFeed() {
-    const container = elements.feedContainer; // Ensure this exists in your DOM elements
+    const container = elements.feedContainer; 
     if (!container) return;
 
     container.innerHTML = '<div class="feed-loader">Loading latest cleanups...</div>';
 
     try {
-        // 1. STRICT ADMIN CHECK
         let isAdmin = false;
         if (state.currentUser) {
             try {
@@ -840,7 +725,7 @@ async function loadActivityFeed() {
             }
         }
 
-        console.log("Current User Admin Status:", isAdmin); // <--- CHECK THIS IN CONSOLE
+        console.log("Current User Admin Status:", isAdmin);
 
         const q = query(
             collection(db, "publishedRoutes"), 
@@ -860,7 +745,6 @@ async function loadActivityFeed() {
             const data = docSnap.data();
             const routeId = docSnap.id; 
 
-            // Skip broken data
             if (typeof data.distance === 'undefined' && typeof data.distanceMiles === 'undefined') return; 
 
             const date = data.timestamp?.toDate().toLocaleDateString() || "Recently";
@@ -870,10 +754,7 @@ async function loadActivityFeed() {
             const isLiked = state.currentUser && likedBy.includes(state.currentUser.uid);
             const likeBtnClass = isLiked ? 'like-btn active' : 'like-btn';
             
-            // 2. PERMISSION LOGIC
             const isOwner = state.currentUser && (data.userId === state.currentUser.uid);
-            
-            // SHOW BUTTON IF: You are Admin OR You are Owner
             const canDelete = isAdmin || isOwner;
 
             const card = document.createElement('div');
@@ -904,13 +785,9 @@ async function loadActivityFeed() {
             `;
             container.appendChild(card);
 
-            // --- LISTENERS ---
-
-            // Like Listener
             const likeBtn = card.querySelector('.like-btn');
             likeBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                // Ensure toggleRouteLike is imported!
                 const result = await toggleRouteLike(routeId); 
                 if (result) {
                     likeBtn.querySelector('.like-count').textContent = result.likeCount;
@@ -918,7 +795,6 @@ async function loadActivityFeed() {
                 }
             });
 
-            // Delete Listener
             if (canDelete) {
                 const delBtn = card.querySelector('.delete-post-btn');
                 delBtn.addEventListener('click', async (e) => {
@@ -946,11 +822,8 @@ async function loadActivityFeed() {
 }
 
 async function loadAdminChallengeList() {
-    // Deprecated: kept as a no-op for now in case anything else still calls it.
-    // The challenges admin UI moved into the Challenges tab of the unified
-    // Admin Panel (admin.js renderChallengesTab / loadChallengeListInPanel).
+    // Deprecated
 }
-
 
 // --- PAST CHALLENGES (History Logic) ---
 async function loadPastChallenges(filterType) {
@@ -1039,9 +912,8 @@ async function loadPastChallenges(filterType) {
 // --- PUBLIC PROFILE & PIN SHEET ---
 export async function showPublicProfile(userId, pinData = null) {
     const modal = document.getElementById('publicProfileModal');
-    if (modal) modal.style.display = 'flex';
+    if (modal) ModalManager.open('publicProfileModal');
 
-    // 1. Verify Imports
     if (!allBadges) {
         console.error("CRITICAL ERROR: 'allBadges' is undefined.");
         return;
@@ -1053,12 +925,10 @@ export async function showPublicProfile(userId, pinData = null) {
     
     if (!contentEl) return;
 
-    // Reset states
     contentEl.innerHTML = '<div style="padding:60px 20px; text-align:center; color:#888;">Loading profile...</div>';
     if (pinArea) pinArea.style.display = 'none';
     if (footerEl) footerEl.innerHTML = '';
 
-    // 2. Handle Pin Data injection
     if (pinData && pinArea) {
         const pinImg = document.getElementById('sheetPinImg');
         const pinTitle = document.getElementById('sheetPinTitle');
@@ -1085,7 +955,6 @@ export async function showPublicProfile(userId, pinData = null) {
         const roleDisplay = data.squadRole ? data.squadRole.charAt(0).toUpperCase() + data.squadRole.slice(1) : '';
         const miles = ((data.totalDistance || 0) * 0.000621371).toFixed(1);
 
-        // Level badge — respects showLevel && level > 1
         const badgeHTML = (data.showLevel !== false && (data.level ?? 1) > 1)
             ? `<span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:radial-gradient(circle at 40% 35%,#FFD700,#FF8C00); color:white; font-weight:900; font-size:11px; line-height:1; vertical-align:middle; margin-left:6px; box-shadow:0 1px 4px rgba(0,0,0,0.3);">${data.level}</span>`
             : '';
@@ -1098,7 +967,6 @@ export async function showPublicProfile(userId, pinData = null) {
             ? `<div style="display:inline-block; background:rgba(255,255,255,0.15); color:white; font-size:0.82em; font-weight:500; padding:3px 12px; border-radius:999px; margin-top:4px;">🛡️ ${escapeAttr(data.squadCallsign)} · ${escapeAttr(roleDisplay)}</div>`
             : '';
 
-        // Build HTML
         let html = `
             <div style="background: linear-gradient(180deg, #1A1A2E 0%, #2A2A4E 100%); padding: 32px 20px 24px; text-align: center; position: relative;">
                 <div style="width: 72px; height: 72px; border-radius: 50%; background: #4A7C59; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 2em; font-weight: 700; color: white; border: 3px solid rgba(255,255,255,0.2);">${escapeAttr(initial)}</div>
@@ -1128,7 +996,6 @@ export async function showPublicProfile(userId, pinData = null) {
                 </div>
         `;
 
-        // Bio
         if (data.bio) {
             html += `
                 <div style="font-size: 0.8em; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; margin-top: 16px;">About</div>
@@ -1136,7 +1003,6 @@ export async function showPublicProfile(userId, pinData = null) {
             `;
         }
 
-        // Badges
         const userBadges = data.badges || {}; 
         const earnedBadges = Object.keys(allBadges).filter(k => userBadges[k]);
         
@@ -1153,8 +1019,7 @@ export async function showPublicProfile(userId, pinData = null) {
                         return `
                             <div style="background:#F5F5F5; border-radius:8px; padding:10px 4px 6px; text-align:center;" title="${escapeAttr(b.description || b.name)}">
                                 <span style="font-size: 1.6em; display: block; margin-bottom: 4px;">${b.icon}</span>
-                                <div style="font-size: 0.65em; color: #666; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${escapeAttr(b.name)}</div>
-                                ${countHTML}
+                                <div style="font-size: 0.65em; color: #666; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${escapeAttr(b.name)}</div>${countHTML}
                             </div>
                         `;
                     }).join('')}
@@ -1162,10 +1027,9 @@ export async function showPublicProfile(userId, pinData = null) {
             `;
         }
 
-        html += `</div>`; // Close body
+        html += `</div>`; 
         contentEl.innerHTML = html;
 
-        // 3. Build Footer Actions
         if (footerEl) {
             let footerHtml = '';
             
@@ -1174,7 +1038,7 @@ export async function showPublicProfile(userId, pinData = null) {
             }
 
             if (pinData) {
-                const isAdmin = state.currentUser && state.isAdmin; // Powered by checkAdminPermissions
+                const isAdmin = state.currentUser && state.isAdmin;
                 if (isAdmin) {
                     footerHtml += `<button class="modal-button btn-danger sheet-del-route-btn" style="width:100%; margin-bottom:10px;">⚠️ Admin: Delete Entire Route</button>`;
                 }
@@ -1183,7 +1047,6 @@ export async function showPublicProfile(userId, pinData = null) {
             
             footerEl.innerHTML = footerHtml;
 
-            // Wire up footer buttons
             if (pinData) {
                 const reportBtn = footerEl.querySelector('.sheet-report-pin-btn');
                 if (reportBtn) {
@@ -1200,7 +1063,7 @@ export async function showPublicProfile(userId, pinData = null) {
                             try {
                                 await deleteDoc(doc(db, "publishedRoutes", pinData.routeId));
                                 alert("Route deleted.");
-                                modal.style.display = 'none';
+                                ModalManager.close('publicProfileModal');
                                 const { fetchAndDisplayCommunityRoutes } = await import('./community.js');
                                 fetchAndDisplayCommunityRoutes();
                             } catch (err) {
@@ -1219,11 +1082,8 @@ export async function showPublicProfile(userId, pinData = null) {
     }
 }
 
-// populateTitleDropdown was removed — title selection moved to My Profile (profile.js).
-// Kept as a no-op export so any lingering call sites don't throw a module error.
 export function populateTitleDropdown() {}
 
-// Switches between the three "screens" in the Squads Modal
 export function switchSquadView(viewName) {
     const views = {
         'registry': document.getElementById('squadRegistryView'),
@@ -1231,67 +1091,39 @@ export function switchSquadView(viewName) {
         'create': document.getElementById('squadCreateView')
     };
 
-    // Hide all, then show the requested one
     Object.values(views).forEach(view => { if(view) view.style.display = 'none'; });
     if (views[viewName]) views[viewName].style.display = 'block';
 }
 
-// Global-access wrappers for your HTML onclicks
 window.openCreateSquadForm = () => switchSquadView('create');
 window.showSquadRegistry = () => switchSquadView('registry');
 
-// Modal Utility Functions
+// Route window.openModal to the new ModalManager
 export function openModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.style.display = 'flex';
-        // Optional: play a subtle sound or trigger an animation here
-    }
+    ModalManager.open(modalId);
 }
-
 export function closeModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.style.display = 'none';
-    }
+    ModalManager.close(modalId);
 }
 
-// Make them available to HTML onclicks
 window.openModal = openModal;
 window.closeModal = closeModal;
 
-// Add to the bottom of ui.js where your other window wrappers are
 window.viewSquadIntel = (squadId) => {
-    // 1. Switch the view to the Intel screen
     switchSquadView('intel');
-    
-    // 2. Trigger the data pull for this specific squad
     if (typeof fetchSquadDetails === 'function') {
         fetchSquadDetails(squadId);
     }
 };
 
-// --- ADMIN PERMISSIONS ---
-// Toggles visibility of admin-only buttons based on the user's profile.
-// Called from auth.js whenever the auth state changes.
 export function checkAdminPermissions(userProfile) {
     const isAdmin = !!(userProfile && userProfile.role === 'admin');
-
-    // Cache for the admin module so it doesn't need to re-read on every call.
     state.isAdmin = isAdmin;
 
-    // The old btnAdminPanel (in Challenge Central) was removed - challenge admin
-    // lives in the Admin Panel's Challenges tab now.
-
-    // Full admin panel button (in the main menu modal).
     const btnAdminPanelFull = document.getElementById('btnAdminPanelFull');
     if (btnAdminPanelFull) btnAdminPanelFull.style.display = isAdmin ? 'flex' : 'none';
 }
 
-
-// --- HUB: PENDING SQUAD INVITES STRIP (Phase 5B) -----------------------------
-// Renders the user's outstanding squad invites at the top of the Community Hub
-// modal. Inline accept / decline. The strip auto-hides when there are no invites.
 async function renderHubInvitesStrip(squadsMod) {
     const strip = document.getElementById('hubInvitesStrip');
     const list = document.getElementById('hubInvitesList');
@@ -1353,12 +1185,7 @@ function escapeAttr(s) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// ---------------------------------------------------------------------------
-// LEADERBOARD TAB SWITCHER (private to ui.js)
-// Manages the three containers: leaderboardList, myStatsContainer, squadsLeaderboardContainer
-// ---------------------------------------------------------------------------
 function _leaderboardShowTab(tabKey) {
-    // Sync active tab styling
     document.querySelectorAll('.leaderboard-tab').forEach(t => {
         const matches =
             (tabKey === 'myStats'  && t.id === 'myStatsBtn') ||
@@ -1388,27 +1215,3 @@ function _leaderboardShowTab(tabKey) {
         fetchAndDisplayLeaderboard(tabKey);
     }
 }
-
-// TEMPORARY RECOUNT BUTTON FOR ADMINS
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
-
-const forceRecountBtn = document.createElement('button');
-forceRecountBtn.innerText = "FORCE RECOUNT STATS";
-forceRecountBtn.style.cssText = "position:fixed; top:10px; left:10px; z-index:9999; background:red; color:white; padding:10px; font-weight:bold;";
-document.body.appendChild(forceRecountBtn);
-
-forceRecountBtn.addEventListener('click', async () => {
-    forceRecountBtn.innerText = "Recounting...";
-    try {
-        // You'll need to pass your initialized Firebase 'app' instance here
-        const functions = getFunctions(); 
-        const bootstrapAppStats = httpsCallable(functions, 'bootstrapAppStats');
-        const result = await bootstrapAppStats();
-        console.log("Recount complete! New stats:", result.data);
-        alert("Done! Refresh your landing page.");
-        forceRecountBtn.innerText = "DONE";
-    } catch (error) {
-        console.error("Recount failed:", error);
-        forceRecountBtn.innerText = "FAILED - Check Console";
-    }
-});
