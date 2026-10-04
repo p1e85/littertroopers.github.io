@@ -1,4 +1,3 @@
-
 import { db, collection, query, orderBy, limit, getDocs, doc, getDoc, deleteDoc } from './firebase.js'; 
 import { state, allTitles, allBadges, mapStyles } from './config.js';
 import { initializeMap, setMapStyle, centerOnRoute } from './map.js';
@@ -647,12 +646,12 @@ if (btnFinalizeSquad) {
     });
 }
     
-//    document.getElementById('hubSquadsBtn').addEventListener('click', () => {
-//    openModal('squadsModal');
-//   fetchLocalSquads(); // Refresh list every time it opens
+//  document.getElementById('hubSquadsBtn').addEventListener('click', () => {
+//  openModal('squadsModal');
+//  fetchLocalSquads(); // Refresh list every time it opens
 //});
 
-document.getElementById('btnFinalizeSquad').addEventListener('click', initializeSquad);
+document.getElementById('btnFinalizeSquad')?.addEventListener('click', initializeSquad);
     
     // Generic Close Listeners
     addAllModalCloseListeners();
@@ -1153,8 +1152,7 @@ export async function showPublicProfile(userId, pinData = null) {
                         return `
                             <div style="background:#F5F5F5; border-radius:8px; padding:10px 4px 6px; text-align:center;" title="${escapeAttr(b.description || b.name)}">
                                 <span style="font-size: 1.6em; display: block; margin-bottom: 4px;">${b.icon}</span>
-                                <div style="font-size: 0.65em; color: #666; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${escapeAttr(b.name)}</div>
-                                ${countHTML}
+                                <div style="font-size: 0.65em; color: #666; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${escapeAttr(b.name)}</div>${countHTML}
                             </div>
                         `;
                     }).join('')}
