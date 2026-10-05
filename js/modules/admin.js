@@ -73,12 +73,29 @@ export async function userCanCreateEventsDirectly() {
  */
 export async function fetchAdminStats() {
     const stats = {
-        users: 0, publishedRoutes: 0, meetups: 0, squads: 0, challenges: 0,
+        users: 0, totalRoutes: 0, meetups: 0, squads: 0, challenges: 0,
         pendingEvents: 0, pendingSquads: 0, openReports: 0,
-        totalPins: 0, totalMiles: 0, recentRoutes7d: 0,
+        totalPins: 0, totalItems: 0, totalMiles: 0,
         errors: []
     };
 
+    // 1. Fetch Global App Stats (Instantly pulled from your synced config!)
+    try {
+        const appStatsSnap = await getDoc(doc(db, "config", "appStats"));
+        if (appStatsSnap.exists()) {
+            const d = appStatsSnap.data();
+            stats.totalPins = d.totalPins ?? 0;
+            stats.totalItems = d.totalItems ?? 0;
+            stats.totalMiles = parseFloat((d.totalMiles ?? 0).toFixed(2));
+            stats.totalRoutes = d.totalRoutes ?? 0;
+            stats.users = d.totalUsers ?? 0;
+        }
+    } catch (err) {
+        console.warn("Failed to fetch appStats:", err);
+        stats.errors.push("appStats");
+    }
+
+    // 2. Fetch Admin Queues (Pending requests, etc.)
     const safeCount = async (name, q) => {
         try {
             const snap = await getCountFromServer(q);
@@ -91,63 +108,16 @@ export async function fetchAdminStats() {
     };
 
     [
-        stats.users, stats.publishedRoutes, stats.meetups, stats.squads,
-        stats.challenges, stats.pendingEvents, stats.pendingSquads
+        stats.meetups, stats.squads, stats.challenges,
+        stats.pendingEvents, stats.pendingSquads, stats.openReports
     ] = await Promise.all([
-        safeCount('publicProfiles', collection(db, 'publicProfiles')),
-        safeCount('publishedRoutes', collection(db, 'publishedRoutes')),
         safeCount('meetups', collection(db, 'meetups')),
         safeCount('squads', collection(db, 'squads')),
         safeCount('challenges', collection(db, 'challenges')),
         safeCount('eventRequests', query(collection(db, 'eventRequests'), where('status', '==', 'pending'))),
-        safeCount('squadRequests', query(collection(db, 'squadRequests'), where('status', '==', 'pending')))
+        safeCount('squadRequests', query(collection(db, 'squadRequests'), where('status', '==', 'pending'))),
+        safeCount('reports-open', query(collection(db, 'reports'), where('status', '==', 'open')))
     ]);
-
-    stats.openReports = await safeCount(
-        'reports-open',
-        query(collection(db, 'reports'), where('status', '==', 'open'))
-    );
-
-    if (stats.publishedRoutes > 0 && stats.publishedRoutes <= 2000) {
-        try {
-            const routesSnap = await getDocs(collection(db, 'publishedRoutes'));
-            const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-            let pins = 0, miles = 0, recent = 0;
-            routesSnap.forEach(d => {
-                const data = d.data();
-                if (Array.isArray(data.pins)) pins += data.pins.length;
-
-                // Always compute miles from the actual route coords. The stored
-                // `distance` field is unreliable: it's missing on Android publishes
-                // and on web routes published before the test version, and is
-                // sometimes in different units. Going to the source coords is the
-                // only consistent path.
-                if (Array.isArray(data.route) && data.route.length > 1) {
-                    const lngLatArr = convertRouteFromFirestore(data.route);
-                    if (lngLatArr && lngLatArr.length > 1) {
-                        const meters = calculateRouteDistance(lngLatArr);
-                        if (Number.isFinite(meters)) {
-                            miles += meters * METERS_TO_MILES;
-                        }
-                    }
-                }
-
-                const ts = data.timestamp;
-                const tsMs = ts && typeof ts.toMillis === 'function'
-                    ? ts.toMillis()
-                    : (ts && ts.seconds ? ts.seconds * 1000 : null);
-                if (tsMs && tsMs >= sevenDaysAgo) recent++;
-            });
-            stats.totalPins = pins;
-            stats.totalMiles = miles;
-            stats.recentRoutes7d = recent;
-        } catch (err) {
-            console.warn('Failed to aggregate route details:', err);
-            stats.errors.push('route-aggregate');
-        }
-    } else if (stats.publishedRoutes > 2000) {
-        stats.errors.push('routes-too-large-skipped');
-    }
 
     return stats;
 }
@@ -480,12 +450,13 @@ async function renderStatsTab() {
         `;
     };
 
-    container.innerHTML = `
+container.innerHTML = `
         <div class="admin-stats-grid">
-            ${card('Users', stats.users)}
-            ${card('Published Routes', stats.publishedRoutes, { extra: `${stats.recentRoutes7d} this week` })}
-            ${card('Pins Logged', stats.totalPins)}
-            ${card('Miles Cleaned', stats.totalMiles.toFixed(1))}
+            ${card('Total Users', stats.users.toLocaleString())}
+            ${card('Published Routes', stats.totalRoutes.toLocaleString())}
+            ${card('Pins Logged', stats.totalPins.toLocaleString())}
+            ${card('Items Collected', stats.totalItems.toLocaleString())}
+            ${card('Miles Cleaned', stats.totalMiles.toLocaleString())}
             ${card('Meetups', stats.meetups)}
             ${card('Squads', stats.squads)}
             ${card('Challenges', stats.challenges)}
