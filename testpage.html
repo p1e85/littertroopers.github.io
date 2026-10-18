@@ -21,6 +21,82 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,600;0,14..32,700;0,14..32,900;1,14..32,400&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="css/styles.css">
+    
+    <style>
+        /* --- MERCH SECTION STYLES --- */
+        .merch-bg {
+            background: #F5F5F5;
+            padding: 80px 20px;
+            border-top: 1px solid var(--border);
+        }
+        .merch-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            margin-top: 40px;
+        }
+        @media (min-width: 768px) {
+            .merch-layout {
+                flex-direction: row;
+                align-items: center;
+            }
+        }
+        .merch-gallery {
+            flex: 1;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        .merch-img-wrap {
+            flex: 1;
+            max-width: 300px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .merch-img-wrap img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .merch-content {
+            flex: 1;
+        }
+        .merch-title {
+            font-size: 1.8rem;
+            font-weight: 900;
+            margin-bottom: 15px;
+            color: var(--black);
+        }
+        .merch-desc {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+        .merch-actions {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .btn-stripe {
+            background: #635BFF;
+            color: white;
+            padding: 14px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+        .btn-stripe:hover {
+            background: #4B45CC;
+        }
+    </style>
 </head>
 <body>
 
@@ -305,6 +381,41 @@
                 <div class="platform-title">iOS Native Beta</div>
                 <p class="platform-desc">iPhone users, the wait is over! The native iOS app is officially live on TestFlight with full parity to the Android app. Join the waitlist to get your exclusive TestFlight invite link.</p>
                 <a href="#ios-beta" class="platform-cta cta-green">Join the Waitlist →</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── MERCHANDISE / SUPPORT ────────────────────────────────────── -->
+<section class="merch-bg">
+    <div class="section-inner">
+        <div class="section-eyebrow">Gear Up. Support the Dev.</div>
+        <h2 class="section-title">Official Litter Troopers Gear</h2>
+        
+        <div class="merch-layout">
+            <div class="merch-gallery">
+                <div class="merch-img-wrap">
+                    <img src="img/LTteepic1front.jpg" alt="Litter Troopers T-Shirt Front">
+                </div>
+                <div class="merch-img-wrap">
+                    <img src="img/LTteepic1back.jpg" alt="Litter Troopers T-Shirt Back">
+                </div>
+            </div>
+            
+            <div class="merch-content">
+                <h3 class="merch-title">The Ground Operator Tee</h3>
+                <p class="merch-desc">
+                    Litter Troopers is 100% free to use, ad-free, and independently built in Chicago. If you want to support the project and help keep the servers running, grab the official Ground Operator T-Shirt. 
+                </p>
+                <p class="merch-desc" style="font-size: 0.95rem;">
+                    <em>Heavyweight cotton. Screen-printed graphics. Perfect for your next neighborhood sweep.</em>
+                </p>
+                <div class="merch-actions">
+                    <!-- Stripe Payment Links (Placeholders) -->
+                    <a href="https://buy.stripe.com/fZu00j05Gd5p0D5flh0Jq0f" target="_blank" class="btn-stripe">
+                        <span>💳</span> Buy in Black
+                    </a>
+                </div>
             </div>
         </div>
     </div>
