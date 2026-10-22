@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Litter Troopers</title>
+  <style>
+    :root {
+      --parchment: #F5F1E6;
+      --forest: #2F4A3C;
+      --mid-green: #4A7C59;
+      --gold: #D4AF37;
+      --ink: #333;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+      background: var(--parchment);
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid rgba(47,74,60,0.15);
+      border-radius: 20px;
+      max-width: 420px;
+      width: 100%;
+      padding: 40px 28px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+    }
+    .icon { font-size: 56px; line-height: 1; margin-bottom: 16px; }
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--forest);
+      margin-bottom: 10px;
+      letter-spacing: -0.3px;
+    }
+    p {
+      font-size: 15px;
+      line-height: 1.5;
+      color: rgba(47,74,60,0.75);
+      margin-bottom: 8px;
+    }
+    .hint {
+      margin-top: 22px;
+      font-size: 13px;
+      color: rgba(47,74,60,0.55);
+    }
+    .btn {
+      display: inline-block;
+      margin-top: 24px;
+      padding: 13px 26px;
+      border-radius: 12px;
+      background: var(--gold);
+      color: var(--forest);
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .wordmark {
+      margin-top: 28px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--mid-green);
+      letter-spacing: 0.5px;
+    }
+    .cancelled h1 { color: var(--ink); }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="icon" id="icon">✅</div>
+    <h1 id="title">All set!</h1>
+    <p id="message">Your payment went through.</p>
+    <p class="hint" id="hint">You can close this tab and head back to the Litter Troopers app.</p>
+    <a class="btn" href="https://www.littertroopers.com" id="cta">Back to Litter Troopers</a>
+    <div class="wordmark">LITTER TROOPERS™</div>
+  </div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var status = (params.get("status") || "").toLowerCase();
+
+      var views = {
+        success: {
+          icon: "🎉",
+          title: "Bounty funded!",
+          message: "Your bounty is now live on the map — troopers can claim and clean it.",
+          hint: "Head back to the Litter Troopers app to track it.",
+          cancelled: false
+        },
+        tip_success: {
+          icon: "💚",
+          title: "Tip sent!",
+          message: "100% of your tip is on its way to the trooper. Thanks for supporting a great cleanup.",
+          hint: "You can close this tab and head back to the app.",
+          cancelled: false
+        },
+        cancelled: {
+          icon: "↩️",
+          title: "Payment cancelled",
+          message: "No charge was made. You can try again anytime from the app.",
+          hint: "Head back to the Litter Troopers app to pick up where you left off.",
+          cancelled: true
+        }
+      };
+
+      // Default to a generic success if the param is missing or unexpected.
+      var view = views[status] || views.success;
+
+      document.getElementById("icon").textContent = view.icon;
+      document.getElementById("title").textContent = view.title;
+      document.getElementById("message").textContent = view.message;
+      document.getElementById("hint").textContent = view.hint;
+      if (view.cancelled) {
+        document.getElementById("card").classList.add("cancelled");
+      }
+      document.title = "Litter Troopers — " + view.title;
+    })();
+  </script>
+</body>
+</html>
